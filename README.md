@@ -14,6 +14,19 @@ versions of Python 3 *might* work as well. To install it, simply put
 the script somewhere in your PATH, and make sure it has executable
 permissions.
 
+## Why Python (and not Rust)?
+
+I originally submitted an [feature
+request](https://github.com/RustSec/cargo-audit/issues/142) to
+`cargo-audit` for a subset of the functionality that
+`cargo-audit-tags` provides. After realizing that the functionality
+can be implemented as an external tool, I closed the issue and went
+ahead an implemented it the way I felt I would get to a working tool
+the quickest; hence Python. If the `cargo-audit` maintainers decide
+that this functionality makes sense as part of `cargo-audit` itself, I
+might be tempted to re-implement it in Rust -- but for now, this is a
+Python program.
+
 ## Description
 
 The set of release tags can be given via `--tags=PATTERN`; the pattern
