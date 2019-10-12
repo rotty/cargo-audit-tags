@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+#
+# Copyright © 2019 Andreas Rottmann
+#
+# This program is free software, you can redistribute it and/or modify
+# it under the terms of either the MIT or Apache-2.0 licenses. You
+# should have received copies of these licenses with this programs; if
+# not see <https://spdx.org/licenses/MIT.html> and
+# <https://spdx.org/licenses/Apache-2.0.html>.
+
+import subprocess
+import re
+import argparse
+from collections import OrderedDict
+from itertools import islice
+import sys
+
+VERSION_PART_RX = re.compile('([^0-9]*)([0-9]*)')
+
+def version_cmp(s1, s2):
+    """A simplified version of the Debian package version number
+    comparison algorithm, see
+    <https://www.debian.org/doc/debian-policy/ch-controlfields.html>
+    """
+    while True:
+        m1 = VERSION_PART_RX.match(s1)
+        m2 = VERSION_PART_RX.match(s2)
+        ndigits1 = m1.group(1)
+        ndigits2 = m2.group(1)
+        # TODO: use "modified ASCII" comparison, as specified
+        if ndigits1 < ndigits2:
+            return -1
+        elif ndigits2 > ndigits1:
+            return +1
+        digits1 = m1.group(2)
+        digits2 = m2.group(2)
+        n1 = 0 if len(digits1) == 0 else int(digits1)
+        n2 = 0 if len(digits2) == 0 else int(digits2)
+        if n1 < n2:
+            return -1
+        elif n1 > n2:
+            return +1
+        s1 = s1[m1.end():]
+        s2 = s2[m2.end():]
+        if not s1 and not s2:
+            return 0
+
+class Version:
+    """A wrapper around version string, providing reasonable comparison
+    semantics.
+    """
+    def __init__(self, s):
+        self._s = s
+
+    def _cmp(self, other):
+        if isinstance(other, Version):
+            return version_cmp(self._s, other._s)
+        else:
+            raise TypeError("can only compare to Version, got {!r}".format(other))
+
+    def __str__(self):
+        return self._s
+
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, self._s)
+
+    def __lt__(self, other):
+        return self._cmp(other) < 0
+
+    def __gt__(self, other):
+        return self._cmp(other) > 0
+
+    def __eq__(self, other):
+        return self._cmp(other) == 0
+
+    def __hash__(self):
+        return hash(self._s)
+
+def get_tags(pattern):
+    output = subprocess.check_output(["git", "tag", "-l", pattern])
+    return [tag.decode('ascii') for tag in (tag.strip() for tag in output.split(b'\n')) if tag]
+
+def tags_by_series(tags, split_rx):
+    series_tags = {}
+    for tag in tags:
+        m = split_rx.match(tag)
+        series, patch = (m.group(1), m.group(2))
+        series_tags.setdefault(Version(series), []).append((patch, tag))
+    sorted_d = OrderedDict()
+    for key in sorted(series_tags.keys()):
+        sorted_d[key] = sorted(series_tags[key], key=lambda entry: Version(entry[0]))
+    return sorted_d
+
+def audit_tag(tag):
+    lock_contents = subprocess.check_output(['git', 'show', '{}:Cargo.lock'.format(tag)])
+    return subprocess.run(['cargo', 'audit', '-f', '-'], input=lock_contents).returncode
+
+def message(fmt, *args, **kwargs):
+    print(fmt.format(*args, **kwargs))
+    sys.stdout.flush()
+
+def bail(fmt, *args, **kwargs):
+    print(fmt.format(*args, **kwargs), file=sys.stderr)
+    sys.stderr.flush()
+    sys.exit(1)
+
+TAGS_PATTERN_DEFAULT = 'v[0-9]*'
+SERIES_RX_DEFAULT = 'v([0-9]+\.[0-9]+)\.(.*)'
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Run `cargo audit` on git tags')
+    parser.add_argument('--patches', choices=['newest', 'all'], default='newest',
+                        help='check either only the newest patch (the default) or all patches in a release series')
+    parser.add_argument('--limit', metavar='N', type=int, default=None, help='Only check the most recent N release series')
+    parser.add_argument('--tags', metavar='PATTERN', default=TAGS_PATTERN_DEFAULT, help='Use PATTERN as argument to `git tag -l` (default: "v*")')
+    parser.add_argument('--series', metavar='REGEX', type=re.compile, default=SERIES_RX_DEFAULT,
+                        help='How to break a tag name into "series" and "patch" parts (default: "{}")'.format(SERIES_RX_DEFAULT))
+    args = parser.parse_args()
+    if args.series.groups != 2:
+        bail('The --series argument requires a regular expression with two capturing groups')
+    tags = get_tags(args.tags)
+    if not tags:
+        bail('No tags found; maybe the --tags option needs to be adjusted.')
+    d = tags_by_series(tags, args.series)
+    items = d.items() if args.limit is None else OrderedDict((key, d[key]) for key in list(d.keys())[-args.limit:]).items()
+    bad_tags = []
+    for series, entries in items:
+        if args.patches == 'newest':
+            p, tag = entries[-1]
+            message('Running audit on {} (newest patch {} in series {})...', tag, p, series)
+            if audit_tag(tag) != 0:
+                bad_tags.append(tag)
+        else:
+            for p, tag in entries:
+                print('Running audit on {}...'.format(tag))
+                sys.stdout.flush()
+                if audit_tag(tag) != 0:
+                    bad_tags.append(tag)
+    if bad_tags:
+        bail('Vulnerabilities found in {}', ', '.join(bad_tags))
+
