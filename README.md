@@ -6,6 +6,16 @@ This program can be run periodically on a Rust project to make sure
 that tagged releases have no know security vulnerabilities in their
 dependencies.
 
+## Installation
+
+`cargo-audit-tags` is a self-contained Python script, requiring only a
+Python 3 installation; it has been tested on Python 3.7, but older
+versions of Python 3 *might* work as well. To install it, simply put
+the script somewhere in your PATH, and make sure it has executable
+permissions.
+
+## Description
+
 The set of release tags can be given via `--tags=PATTERN`; the pattern
 will be passed to `git tag -l`, by default all tags starting with "v"
 will be considered release tags.
