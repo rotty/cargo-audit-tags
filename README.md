@@ -74,6 +74,14 @@ To check all release tags, use:
 cargo-audit-tags --patches=all
 ```
 
+Should you have a `Cargo.lock` file that is not located at the git
+repository root, as might be the case for multi-language projects, you
+can specify one or more lockfile locations as arguments, like this:
+
+```sh
+cargo-audit-tags rust/Cargo.lock
+```
+
 ## Example output
 
 Running `cargo-audit-tags` on the [`bat` crate] generates this output:

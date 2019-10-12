@@ -93,9 +93,14 @@ def tags_by_series(tags, split_rx):
         sorted_d[key] = sorted(series_tags[key], key=lambda entry: Version(entry[0]))
     return sorted_d
 
-def audit_tag(tag):
-    lock_contents = subprocess.check_output(['git', 'show', '{}:Cargo.lock'.format(tag)])
-    return subprocess.run(['cargo', 'audit', '-f', '-'], input=lock_contents).returncode
+def audit_tag(tag, lockfiles):
+    ok = True
+    for lockfile in lockfiles:
+        lock_contents = subprocess.check_output(['git', 'show', '{}:{}'.format(tag, lockfile)])
+        status = subprocess.run(['cargo', 'audit', '-f', '-'], input=lock_contents).returncode
+        if status != 0:
+            ok = False
+    return ok
 
 def message(fmt, *args, **kwargs):
     print(fmt.format(*args, **kwargs))
@@ -124,6 +129,8 @@ def main():
         help=('How to break a tag name into "series" and "patch" parts (default: "{}")'
               .format(SERIES_RX_DEFAULT))
     )
+    parser.add_argument('lockfiles', nargs='*', default=['Cargo.lock'],
+                        help='Cargo.lock file paths (default: "Cargo.lock")')
     args = parser.parse_args()
     if args.series.groups != 2:
         bail('The --series argument requires a regular expression with two capturing groups')
@@ -138,13 +145,13 @@ def main():
         if args.patches == 'newest':
             p, tag = entries[-1]
             message('Running audit on {} (newest patch {} in series {})...', tag, p, series)
-            if audit_tag(tag) != 0:
+            if not audit_tag(tag, args.lockfiles):
                 bad_tags.append(tag)
         else:
             for p, tag in entries:
                 print('Running audit on {}...'.format(tag))
                 sys.stdout.flush()
-                if audit_tag(tag) != 0:
+                if not audit_tag(tag, args.lockfiles):
                     bad_tags.append(tag)
     if bad_tags:
         bail('Vulnerabilities found in {}', ', '.join(bad_tags))
