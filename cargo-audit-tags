@@ -8,14 +8,17 @@
 # not see <https://spdx.org/licenses/MIT.html> and
 # <https://spdx.org/licenses/Apache-2.0.html>.
 
+"""A wrapper around `cargo audit`, calling it repeatedly based on git
+tags.
+"""
+
 import subprocess
 import re
 import argparse
 from collections import OrderedDict
-from itertools import islice
 import sys
 
-VERSION_PART_RX = re.compile('([^0-9]*)([0-9]*)')
+VERSION_PART_RX = re.compile(r'([^0-9]*)([0-9]*)')
 
 def version_cmp(s1, s2):
     """A simplified version of the Debian package version number
@@ -30,15 +33,15 @@ def version_cmp(s1, s2):
         # TODO: use "modified ASCII" comparison, as specified
         if ndigits1 < ndigits2:
             return -1
-        elif ndigits2 > ndigits1:
+        if ndigits2 > ndigits1:
             return +1
         digits1 = m1.group(2)
         digits2 = m2.group(2)
-        n1 = 0 if len(digits1) == 0 else int(digits1)
-        n2 = 0 if len(digits2) == 0 else int(digits2)
+        n1 = 0 if not digits1 else int(digits1)
+        n2 = 0 if not digits2 else int(digits2)
         if n1 < n2:
             return -1
-        elif n1 > n2:
+        if n1 > n2:
             return +1
         s1 = s1[m1.end():]
         s2 = s2[m2.end():]
@@ -46,7 +49,7 @@ def version_cmp(s1, s2):
             return 0
 
 class Version:
-    """A wrapper around version string, providing reasonable comparison
+    """A wrapper around a version string, providing reasonable comparison
     semantics.
     """
     def __init__(self, s):
@@ -55,8 +58,7 @@ class Version:
     def _cmp(self, other):
         if isinstance(other, Version):
             return version_cmp(self._s, other._s)
-        else:
-            raise TypeError("can only compare to Version, got {!r}".format(other))
+        raise TypeError("can only compare to Version, got {!r}".format(other))
 
     def __str__(self):
         return self._s
@@ -105,16 +107,23 @@ def bail(fmt, *args, **kwargs):
     sys.exit(1)
 
 TAGS_PATTERN_DEFAULT = 'v[0-9]*'
-SERIES_RX_DEFAULT = 'v([0-9]+\.[0-9]+)\.(.*)'
+SERIES_RX_DEFAULT = r'v([0-9]+\.[0-9]+)\.(.*)'
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='Run `cargo audit` on git tags')
-    parser.add_argument('--patches', choices=['newest', 'all'], default='newest',
-                        help='check either only the newest patch (the default) or all patches in a release series')
-    parser.add_argument('--limit', metavar='N', type=int, default=None, help='Only check the most recent N release series')
-    parser.add_argument('--tags', metavar='PATTERN', default=TAGS_PATTERN_DEFAULT, help='Use PATTERN as argument to `git tag -l` (default: "v*")')
-    parser.add_argument('--series', metavar='REGEX', type=re.compile, default=SERIES_RX_DEFAULT,
-                        help='How to break a tag name into "series" and "patch" parts (default: "{}")'.format(SERIES_RX_DEFAULT))
+    parser.add_argument(
+        '--patches', choices=['newest', 'all'], default='newest',
+        help='check either only the newest patch (the default) or all patches in a release series'
+    )
+    parser.add_argument('--limit', metavar='N', type=int, default=None,
+                        help='Only check the most recent N release series')
+    parser.add_argument('--tags', metavar='PATTERN', default=TAGS_PATTERN_DEFAULT,
+                        help='Use PATTERN as argument to `git tag -l` (default: "v*")')
+    parser.add_argument(
+        '--series', metavar='REGEX', type=re.compile, default=SERIES_RX_DEFAULT,
+        help=('How to break a tag name into "series" and "patch" parts (default: "{}")'
+              .format(SERIES_RX_DEFAULT))
+    )
     args = parser.parse_args()
     if args.series.groups != 2:
         bail('The --series argument requires a regular expression with two capturing groups')
@@ -122,7 +131,8 @@ if __name__ == '__main__':
     if not tags:
         bail('No tags found; maybe the --tags option needs to be adjusted.')
     d = tags_by_series(tags, args.series)
-    items = d.items() if args.limit is None else OrderedDict((key, d[key]) for key in list(d.keys())[-args.limit:]).items()
+    items = (d.items() if args.limit is None
+             else OrderedDict((key, d[key]) for key in list(d.keys())[-args.limit:]).items())
     bad_tags = []
     for series, entries in items:
         if args.patches == 'newest':
@@ -138,4 +148,8 @@ if __name__ == '__main__':
                     bad_tags.append(tag)
     if bad_tags:
         bail('Vulnerabilities found in {}', ', '.join(bad_tags))
+    else:
+        message('No vulnerabilities found in checked tags')
 
+if __name__ == '__main__':
+    main()
