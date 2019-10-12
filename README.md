@@ -27,6 +27,13 @@ that this functionality makes sense as part of `cargo-audit` itself, I
 might be tempted to re-implement it in Rust -- but for now, this is a
 Python program.
 
+The development of the initial version took a good afternoon; doing it
+in Rust would have taken me probably a bit longer, even if not
+much. However, now that the functionality is "done", re-implementing
+it in Rust should be quite straightforward, should someone feel the
+need. Maybe the functionality is even desired as part of `cargo-audit`
+itself -- I'll keep an eye on the aforementioned issue.
+
 ## Description
 
 The set of release tags can be given via `--tags=PATTERN`; the pattern
