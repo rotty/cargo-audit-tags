@@ -119,8 +119,8 @@ these series, so this is not an ideal example.
 
 ## License
 
-The code and documentation in the `lexpr-rs` git repository is [Free
-Software], dual-licensed under the [MIT](./LICENSE-MIT) or
+The code and documentation in the `cargo-audit-tags` git repository is
+[Free Software], dual-licensed under the [MIT](./LICENSE-MIT) or
 [Apache-2.0](./LICENSE-APACHE) license, at your choosing.
 
 [Free Software]: https://www.gnu.org/philosophy/free-sw.html
